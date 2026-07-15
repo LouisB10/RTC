@@ -26,3 +26,15 @@ Réglé deux warnings hérités du scaffold :
 - Next râlait au `dev` (« inferred workspace root ») parce que deux `package.json`/`package-lock.json` parasites traînaient dans mon home (un vieux `npm install` foireux). Supprimés, warning parti.
 
 Créé le serveur : `apps/server` en Express 5 + TypeScript. J'ai choisi l'exécution directe du TS par Node (type stripping, dispo par défaut depuis Node 22.18) plutôt qu'un build tsc → dist. Du coup pas de nodemon ni tsx : `node --watch src/index.ts` en dev. tsconfig en `noEmit` (tsc ne sert qu'au check-types) avec `verbatimModuleSyntax` + `erasableSyntaxOnly`, et le package est en `"type": "module"`. Pour l'instant juste une route `GET /` qui renvoie « Hello World! ». `pnpm check-types` passe au vert sur tout le monorepo.
+
+## Prochaine séance — Prisma + PostgreSQL
+
+Objectif : brancher la base pour débloquer l'auth et les routes.
+
+1. **Postgres via Docker** — `docker-compose.yml` à la racine (service `postgres`, user/password, volume pour persister). `docker compose up -d`. (Docker est installé.)
+2. **Installer Prisma dans `apps/server`** — `prisma` en dev + `@prisma/client`, puis `prisma init` (crée `prisma/schema.prisma` et `.env` avec `DATABASE_URL`).
+3. **Secrets** — vérifier que `.env` est gitignoré, créer un `.env.example` à committer, pointer `DATABASE_URL` sur le Postgres du docker-compose.
+4. **Traduire le schéma dbdiagram en `schema.prisma`** — les 6 tables (`users`, `servers`, `server_members`, `server_bans`, `channels`, `messages`) + relations. Ne pas oublier : le owner n'est **pas** dans `server_members`.
+5. **Migrer + tester** — `prisma migrate dev --name init`, puis une requête de test pour valider la connexion.
+
+Décision prise : les tables d'auth de Better Auth seront maintenues **à la main dans `schema.prisma`** (pas de génération auto), pour garder un seul schéma sous contrôle.

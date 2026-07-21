@@ -1,0 +1,117 @@
+// Schéma RTC — traduit depuis docs/db.md (dbdiagram).
+// Noms Prisma idiomatiques (PascalCase/camelCase) + @map/@@map pour garder les noms SQL.
+// Rappel: l'owner d'un serveur n'est PAS dans server_members (relation Server.owner).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserStatus {
+  online
+  offline
+  away
+  invisible
+
+  @@map("user_status")
+}
+
+enum MemberRole {
+  admin
+  member
+
+  @@map("member_role")
+}
+
+model User {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  username     String     @unique @db.VarChar(50)
+  email        String     @unique @db.VarChar(255)
+  passwordHash String     @map("password_hash") @db.VarChar(255)
+  avatarUrl    String?    @map("avatar_url") @db.VarChar(255)
+  status       UserStatus @default(offline)
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamp(6)
+
+  ownedServers      Server[]
+  serverMemberships ServerMember[]
+  bans              ServerBan[]
+  messages          Message[]
+
+  @@map("users")
+}
+
+model Server {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name       String   @db.VarChar(50)
+  ownerId    String   @map("owner_id") @db.Uuid
+  inviteCode String   @unique @map("invite_code") @db.VarChar(20)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  owner    User           @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  members  ServerMember[]
+  bans     ServerBan[]
+  channels Channel[]
+
+  @@map("servers")
+}
+
+model ServerMember {
+  id       String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  serverId String     @map("server_id") @db.Uuid
+  userId   String     @map("user_id") @db.Uuid
+  role     MemberRole @default(member)
+  joinedAt DateTime   @default(now()) @map("joined_at") @db.Timestamp(6)
+
+  server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([serverId, userId])
+  @@index([userId])
+  @@map("server_members")
+}
+
+model ServerBan {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  serverId  String    @map("server_id") @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  expiresAt DateTime? @map("expires_at") @db.Timestamp(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+
+  server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([serverId, userId])
+  @@map("server_bans")
+}
+
+model Channel {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  serverId  String   @map("server_id") @db.Uuid
+  name      String   @db.VarChar(50)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  server   Server    @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@map("channels")
+}
+
+model Message {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  channelId String    @map("channel_id") @db.Uuid
+  authorId  String?   @map("author_id") @db.Uuid
+  content   String?   @db.Text
+  editedAt  DateTime? @map("edited_at") @db.Timestamp(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamp(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  author  User?   @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([channelId, createdAt])
+  @@map("messages")
+}

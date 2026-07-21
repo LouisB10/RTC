@@ -38,3 +38,28 @@ Objectif : brancher la base pour débloquer l'auth et les routes.
 5. **Migrer + tester** — `prisma migrate dev --name init`, puis une requête de test pour valider la connexion.
 
 Décision prise : les tables d'auth de Better Auth seront maintenues **à la main dans `schema.prisma`** (pas de génération auto), pour garder un seul schéma sous contrôle.
+
+## 15/07
+
+Base branchée, les 5 points de la séance sont faits. Mais Prisma a sorti la v7 entre-temps et ça change deux, trois choses par rapport au plan.
+
+Gros changement : **Prisma 7.8, le moteur Rust a disparu**. L'ancien générateur `prisma-client-js` est en voie de dépréciation. Je suis reparti sur le nouveau générateur `prisma-client` (ESM-first, sans moteur), qui colle bien mieux à notre setup (ESM natif + type-stripping, pas de build). Concrètement :
+
+- Le client est généré dans `src/generated/prisma` (gitignoré), en `.ts` avec imports à extension explicite (`./enums.ts`) et enums en `const` + union de types — donc zéro souci avec `erasableSyntaxOnly` ni avec l'exécution directe des `.ts`. `check-types` passe.
+- Comme le moteur ne bundle plus les drivers, il faut un **driver adapter** : installé `pg` + `@prisma/adapter-pg`. Le `PrismaClient` s'instancie avec l'adapter (`new PrismaClient({ adapter: new PrismaPg({ connectionString }) })`), fait dans `src/db.ts`.
+- Prisma 7 génère un `prisma.config.ts` : l'URL de la base n'est plus dans `schema.prisma` mais dans ce fichier (`datasource.url` ← `process.env.DATABASE_URL`), chargé via `import "dotenv/config"`. Du coup `dotenv` en devDep.
+- Ajouté `postinstall: prisma generate` (le client généré est gitignoré, faut le régénérer sur un clone frais). Runtime : `node --env-file-if-exists=.env` pour charger le `.env`.
+
+Docker : le port **5432 était déjà pris** par un Postgres natif sur ma machine, j'ai mappé le conteneur sur **5433** côté hôte (`docker-compose.yml`, image `postgres:17-alpine`, volume pour persister). `DATABASE_URL` pointe sur `localhost:5433`.
+
+Secrets ok : `.env` (racine + `apps/server`) gitignorés, `.env.example` committés, client généré ignoré.
+
+Schéma traduit depuis `docs/db.md` : les 6 tables + les 2 enums (`user_status`, `member_role`). Noms Prisma idiomatiques avec `@map`/`@@map` pour garder les noms SQL. Le owner reste bien hors de `server_members` (relation `Server.owner`). `db.md` ne précisait aucun `ON DELETE`, j'en ai ajouté : cascade depuis un serveur (channels/members/bans/messages), et `SetNull` sur `messages.author_id` (déjà nullable → on garde le message si l'auteur part). Migration `init` appliquée, round-trip create/read/delete testé en vrai contre la base : OK.
+
+À noter : `db.md` **ne contient pas** les tables Better Auth (session/account/verification). Je les ajouterai à la main quand j'attaquerai l'auth (étape 5 du plan), pas maintenant. Petit point à trancher à ce moment-là : `users.password_hash` est dans le schéma actuel alors que Better Auth stocke plutôt le mot de passe dans sa table `account` — faudra décider si on garde `password_hash` ou si on s'aligne sur Better Auth.
+
+## Prochaine séance — Authentification (Better Auth)
+
+1. Ajouter les tables Better Auth à la main dans `schema.prisma` (session, account, verification) + migration.
+2. Brancher Better Auth sur Prisma, trancher la question `password_hash` vs table `account`.
+3. Routes d'inscription / connexion / session.

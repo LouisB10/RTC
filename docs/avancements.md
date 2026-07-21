@@ -63,3 +63,25 @@ Schéma traduit depuis `docs/db.md` : les 6 tables + les 2 enums (`user_status`,
 1. Ajouter les tables Better Auth à la main dans `schema.prisma` (session, account, verification) + migration.
 2. Brancher Better Auth sur Prisma, trancher la question `password_hash` vs table `account`.
 3. Routes d'inscription / connexion / session.
+
+## 21/07
+
+Remise au propre : rien de la séance du 15/07 n'était commité.
+
+`apps/server/package.json` avait **perdu ses dépendances** (`@prisma/client`, `@prisma/adapter-pg`, `pg`, + `prisma`, `dotenv`, `@types/pg` en dev) et le script `postinstall: prisma generate`. Les paquets étaient dans `node_modules` mais plus déclarés : ça marchait chez moi, un clone frais était cassé. Restauré, et `dev`/`start` passés en `node --env-file-if-exists=.env`. Le `pnpm-lock.yaml` s'était aussi réaligné sur le HEAD, `pnpm install` l'a régénéré.
+
+Lint : le commit Biome (`8d22407`) n'avait jamais reformaté l'existant, `biome check .` est rouge partout. Nettoyé **`apps/server` uniquement** (quotes doubles, `_req` dans `index.ts`, `process.env.DATABASE_URL` dans `prisma.config.ts`) ; le client et le `biome.json` déprécié attendront une séance dédiée.
+
+Vérifs avant commit : `rtc-postgres` healthy sur 5433, `check-types` vert, `biome check apps/server` vert, `migrate status` → up to date, requête réelle contre la base OK. Poussé en 3 commits.
+
+**Prisma 7.9.0 est sorti** — mise à jour repoussée pour ne pas la mélanger avec l'auth.
+
+Replanifié `plan.md` : ~10 jours de retard. Je garde les 26 étapes mais je réordonne **par couche** — backend en continu jusqu'au 08/08, client Next.js d'un bloc ensuite. Ça mange la marge du 17-21/08 : point de bascule au 15/08, si le client n'est pas debout je coupe dans les bonus.
+
+## Prochaine séance — Authentification, pour de vrai
+
+1. **`apps/server/src/auth.ts`** : `betterAuth({ database: prismaAdapter(prisma, { provider: "postgresql" }) })`, le client Prisma venant de `src/db.ts` (pas de `@prisma/client`, notre output est custom). Email/password seulement, pas d'OAuth vu le retard. Importer depuis `better-auth/minimal` et activer `experimental: { joins: true }` (2-3× sur `/get-session`).
+2. **Schéma** : `@better-auth/cli generate` pour les models `session` / `account` / `verification`, puis relecture à la main aux conventions du projet (`@map`/`@@map` snake_case, `@db.Uuid`). Le CLI ne migre pas → `prisma migrate dev --name auth`.
+3. **Trancher `password_hash`** : je penche pour le supprimer et laisser `account` porter le credential (sinon deux sources de vérité ; la table `users` est vide, migration indolore). `User` doit alors gagner `emailVerified`, `updatedAt` et un `name` — reste à décider : `name` mappé sur l'`username` existant, ou colonne distincte avec `username` en handle unique façon Discord.
+4. **Handler Express 5** : `app.all("/api/auth/*splat", toNodeHandler(auth))` — le `*` seul ne marche plus en Express 5. Ajouter `BETTER_AUTH_SECRET` et `BETTER_AUTH_URL` dans `.env` et `.env.example`.
+5. **Tester** signup / signin / get-session au curl, puis écrire le middleware `requireAuth` qui débloque les routes des étapes 6 à 9.

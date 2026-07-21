@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: rtc-postgres
+    restart: unless-stopped
+    ports:
+      # 5432 côté hôte est déjà pris par un Postgres natif → on expose sur 5433
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rtc}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rtc}
+      POSTGRES_DB: ${POSTGRES_DB:-rtc}
+    volumes:
+      - rtc-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rtc} -d ${POSTGRES_DB:-rtc}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  rtc-postgres-data:

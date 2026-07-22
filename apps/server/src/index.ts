@@ -6,4 +6,9 @@ app.get("/", (_req: Request, res: Response) => {
   res.send("Hello World! pas bonjour");
 });
 
-app.listen(3000);
+// 3000 est pris par le client Next
+const port = Number(process.env.PORT) || 3001;
+
+app.listen(port, () => {
+  console.log(`Serveur sur http://localhost:${port}`);
+});
